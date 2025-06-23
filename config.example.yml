@@ -1,0 +1,47 @@
+# EnvironmentTagger Configuration Example
+# Copy this file to config.yml and modify as needed
+
+# Core Configuration
+model_version: "v1.0.0"
+detection_threshold: 0.7
+max_tags: 25
+
+# API Keys and Credentials
+# Note: For GCP services, better to use application default credentials
+# gemini_api_key: "your-gemini-api-key"
+
+# Storage Configuration
+storage:
+  provider: "google_cloud"  # Options: google_cloud, local, s3
+  bucket_name: "your-media-bucket"
+  results_path: "environment_tags"
+
+# Database Configuration
+database:
+  provider: "firestore"  # Options: firestore, mongodb, postgresql
+  collection: "environment_tags"
+  # connection_string: "your-connection-string"  # For non-GCP databases
+
+# Logging Configuration
+logging:
+  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  log_to_cloud: true
+  log_to_file: false
+  log_file_path: "logs/environment_tagger.log"
+
+# Custom Tag Dictionary
+# Path to JSON file with custom tag mappings
+custom_tag_dictionary: "custom_tags.json"
+
+# TensorFlow Model (Optional)
+# Path to custom TensorFlow model for specialized environment detection
+# tf_model_path: "models/environment_model"
+
+# Processing Options
+processing:
+  use_vision_api: true
+  use_gemini_api: true
+  use_tf_model: false
+  store_results: true
+  extract_colors: true
+  include_confidence_scores: true

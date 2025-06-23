@@ -1,131 +1,93 @@
-# EnvironmentTagger Media Tool
+# EnvironmentTagger Media Automation Tool
 
-EnvironmentTagger is an intelligent media analysis tool that automatically detects, categorizes, and tags environments and settings within media assets. Using computer vision and Gemini API, it identifies locations, lighting conditions, ambient settings, and other environmental factors to improve searchability and production continuity.
+## Overview
+EnvironmentTagger is an AI-powered media tagging tool that automatically identifies and tags environment elements in video and image content. Using Google Cloud Vision API and Gemini API, it can recognize settings, scenery, props, and environmental conditions to create detailed metadata that improves searchability and organization of media assets.
 
 ## Features
-
-- Automatic environment detection and tagging
-- Categorization by location, lighting, weather, time-of-day, and mood
-- Integration with Google Cloud Vision and Gemini API
-- RESTful API for easy integration
-- Batch processing capabilities
-- Custom tag dictionary support
-- Firestore storage for tag persistence
+- Automatic detection of indoor/outdoor settings
+- Classification of environment elements (furniture, nature, architecture)
+- Recognition of lighting conditions and time of day
+- Contextual understanding of environments using Gemini API
+- Hierarchical tagging system with confidence scores
+- RESTful API for integration with media workflows
 
 ## Getting Started
 
 ### Prerequisites
+- Google Cloud account with Vision API enabled
+- Cloud Storage bucket for metadata storage
+- Python 3.9+
 
-- Google Cloud Platform account
-- Python 3.9 or higher
-- Google Cloud SDK installed and configured
-- Required API permissions:
-  - Gemini API
-  - Cloud Vision API
-  - Cloud Storage
-  - Firestore
-  - (Optional) Cloud Functions for serverless deployment
-
-### Installation
-
+### Setup
+1. Clone this repository
 ```bash
-# Clone the repository
 git clone https://github.com/dxaginfo/EnvironmentTagger-Media-Tool.git
 cd EnvironmentTagger-Media-Tool
-
-# Set up Python environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure Google Cloud credentials
-gcloud auth application-default login
 ```
 
-### Local Development
-
+2. Set up Python environment
 ```bash
-# Run the Flask development server
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+3. Set environment variables
+```bash
+export PROJECT_ID="your-gcp-project-id"
+export BUCKET_NAME="your-storage-bucket"
+export GOOGLE_APPLICATION_CREDENTIALS="path/to/your/credentials.json"
+```
+
+4. Run the application
+```bash
 python app.py
 ```
 
-### Deployment Options
+### Deployment to Google Cloud
 
-#### Google Cloud Functions
-
+1. Build and deploy as a Cloud Run service
 ```bash
-gcloud functions deploy environment-tagger \
-  --runtime python39 \
-  --trigger-http \
-  --allow-unauthenticated \
-  --entry-point process_media \
-  --memory 2GB \
-  --timeout 540s
+gcloud builds submit --tag gcr.io/PROJECT_ID/environment-tagger
+gcloud run deploy environment-tagger --image gcr.io/PROJECT_ID/environment-tagger --platform managed
 ```
 
-#### Docker Container
-
+2. Alternatively, deploy as a Cloud Function
 ```bash
-docker build -t environment-tagger:latest .
-docker run -p 8080:8080 environment-tagger:latest
+gcloud functions deploy tag_media --runtime python39 --trigger-http --entry-point tag_media
 ```
 
-## API Usage
+## API Reference
 
-### Analyze a media file
-
-```bash
-curl -X POST https://your-function-url/analyze \
-  -H "Content-Type: application/json" \
-  -d '{
-    "mediaSource": "gs://your-bucket/your-media-file.jpg",
-    "analysisOptions": {
-      "detectionThreshold": 0.75,
-      "maxTags": 20,
-      "outputFormat": "json"
-    }
-  }'
+### POST /api/tag
+Tags a media file with environment metadata
+```json
+{
+  "mediaUrl": "https://example.com/image.jpg",
+  "options": {
+    "detailLevel": "detailed",
+    "includeConfidence": true,
+    "customTags": ["office", "modern"]
+  }
+}
 ```
 
-### Process multiple files in batch
+### GET /api/tags/{mediaId}
+Retrieves environment tags for a specific media
 
-```bash
-curl -X POST https://your-function-url/batch \
-  -H "Content-Type: application/json" \
-  -d '{
-    "mediaSources": [
-      "gs://your-bucket/file1.jpg",
-      "gs://your-bucket/file2.jpg"
-    ],
-    "analysisOptions": {
-      "detectionThreshold": 0.7
-    }
-  }'
+### PUT /api/tags/{mediaId}
+Updates environment tags for a specific media
+```json
+{
+  "tags": ["office", "modern", "bright"],
+  "override": false
+}
 ```
-
-### Retrieve previously generated tags
-
-```bash
-curl -X GET https://your-function-url/tags/7e5d82f1a3e245a9b0e9f1a3e245a9b0
-```
-
-## Integration with Other Tools
-
-EnvironmentTagger is designed to work seamlessly with other media automation tools:
-
-- **SceneValidator**: Use environmental context to validate scene consistency
-- **TimelineAssembler**: Ensure environment consistency across a timeline
-- **Google Drive**: Tag and organize media assets based on environmental context
 
 ## License
-
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Acknowledgements
-
 - Google Cloud Vision API
-- Google Gemini API
-- TensorFlow project
-- Flask framework
+- Gemini API for AI-powered analysis
+- Flask for the web framework

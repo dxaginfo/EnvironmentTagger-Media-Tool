@@ -1,103 +1,119 @@
 import os
+import tempfile
+import urllib.request
 from flask import Flask, request, jsonify
-from environment_tagger import EnvironmentTagger
+from environment_detector import EnvironmentDetector
 
 app = Flask(__name__)
 
-# Initialize tagger with default configuration
-tagger = EnvironmentTagger()
+# Initialize environment detector with environment variables
+PROJECT_ID = os.environ.get('PROJECT_ID', 'your-project-id')
+BUCKET_NAME = os.environ.get('BUCKET_NAME', 'environment-tags')
 
-@app.route('/analyze', methods=['POST'])
-def analyze():
-    """Analyze media and tag environments."""
-    request_json = request.get_json(silent=True)
+detector = EnvironmentDetector(PROJECT_ID, BUCKET_NAME)
+
+@app.route('/api/tag', methods=['POST'])
+def tag_media():
+    """API endpoint to tag media with environment metadata"""
+    data = request.json
+    media_url = data.get('mediaUrl')
+    options = data.get('options', {})
     
-    if not request_json or 'mediaSource' not in request_json:
-        return jsonify({"error": "Invalid request: mediaSource is required"}), 400
-        
-    media_source = request_json.get("mediaSource")
-    analysis_options = request_json.get("analysisOptions", {})
+    if not media_url:
+        return jsonify({'error': 'Media URL is required'}), 400
     
     try:
-        # Process the media
-        results = tagger.process_media(media_source, analysis_options)
-        return jsonify(results)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/tags/<media_id>', methods=['GET'])
-def get_tags(media_id):
-    """Retrieve previously generated tags for a media ID."""
-    from google.cloud.firestore import Client as FirestoreClient
-    
-    try:
-        # Initialize Firestore client
-        firestore_client = FirestoreClient()
+        # Download media file
+        local_path = download_media(media_url)
         
-        # Get document from Firestore
-        doc_ref = firestore_client.collection("environment_tags").document(media_id)
-        doc = doc_ref.get()
-        
-        if doc.exists:
-            return jsonify(doc.to_dict())
+        # Process media file
+        if is_video(local_path):
+            frames = extract_frames(local_path)
+            results = []
+            for frame in frames:
+                result = detector.detect_environment(frame)
+                results.append(result)
+            # Aggregate results
+            environment = aggregate_environment_results(results)
         else:
-            return jsonify({"error": "Tags not found for media ID"}), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/batch', methods=['POST'])
-def batch_analyze():
-    """Process multiple media files in a batch."""
-    request_json = request.get_json(silent=True)
-    
-    if not request_json or 'mediaSources' not in request_json:
-        return jsonify({"error": "Invalid request: mediaSources is required"}), 400
+            environment = detector.detect_environment(local_path)
         
-    media_sources = request_json.get("mediaSources")
-    analysis_options = request_json.get("analysisOptions", {})
+        # Store results
+        media_id = detector.store_environment_metadata(environment)
+        
+        # Clean up
+        os.remove(local_path)
+        
+        return jsonify({
+            'mediaId': media_id,
+            'environment': environment
+        })
     
-    if not isinstance(media_sources, list):
-        return jsonify({"error": "mediaSources must be a list"}), 400
-    
-    import time
-    start_time = time.time()
-    results = []
-    success_count = 0
-    failure_count = 0
-    
-    for media_source in media_sources:
-        try:
-            # Process each media source
-            result = tagger.process_media(media_source, analysis_options)
-            results.append({
-                "mediaId": result["mediaId"],
-                "status": "success",
-                "tags": result
-            })
-            success_count += 1
-        except Exception as e:
-            results.append({
-                "mediaId": media_source,
-                "status": "error",
-                "error": str(e)
-            })
-            failure_count += 1
-    
-    return jsonify({
-        "results": results,
-        "metadata": {
-            "totalProcessed": len(media_sources),
-            "successCount": success_count,
-            "failureCount": failure_count,
-            "processingTime": time.time() - start_time
-        }
-    })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Health check endpoint."""
-    return jsonify({"status": "healthy"})
+@app.route('/api/tags/<media_id>', methods=['GET'])
+def get_tags(media_id):
+    """API endpoint to retrieve environment tags for a specific media"""
+    try:
+        environment = detector.get_environment_metadata(media_id)
+        
+        if not environment:
+            return jsonify({'error': 'Media ID not found'}), 404
+            
+        return jsonify(environment)
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port, debug=False)
+@app.route('/api/tags/<media_id>', methods=['PUT'])
+def update_tags(media_id):
+    """API endpoint to update environment tags for a specific media"""
+    data = request.json
+    tags = data.get('tags', [])
+    override = data.get('override', False)
+    
+    if not tags:
+        return jsonify({'error': 'Tags are required'}), 400
+    
+    try:
+        success = detector.update_environment_metadata(media_id, tags, override)
+        
+        if not success:
+            return jsonify({'error': 'Failed to update tags'}), 404
+            
+        # Get updated metadata
+        environment = detector.get_environment_metadata(media_id)
+        return jsonify(environment)
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+def download_media(url):
+    """Download media from URL to local temp file"""
+    _, temp_path = tempfile.mkstemp()
+    urllib.request.urlretrieve(url, temp_path)
+    return temp_path
+
+def is_video(file_path):
+    """Check if file is video based on extension"""
+    video_extensions = ['.mp4', '.mov', '.avi', '.wmv', '.mkv']
+    _, ext = os.path.splitext(file_path.lower())
+    return ext in video_extensions
+
+def extract_frames(video_path):
+    """Extract representative frames from video using OpenCV"""
+    # This would use OpenCV to extract frames
+    # For now, we'll just return the video path as if it were a single frame
+    return [video_path]
+
+def aggregate_environment_results(results):
+    """Combine results from multiple frames"""
+    # Simple aggregation - take the first result for now
+    # A real implementation would do more sophisticated aggregation
+    if results:
+        return results[0]
+    return {}
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
